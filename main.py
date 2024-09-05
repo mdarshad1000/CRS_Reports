@@ -99,7 +99,7 @@ def get_cookies():
         "ASP.NET_SessionId": "ciimk4xwu5rhyhbebipfcmi2",
         "s_sq": "%5B%5BB%5D%5D",
         "__cfruid": "a9722f8935700119f2bde35a08cef557a10e0fe0-1725492540",
-        "__cf_bm": "QK3KP39XueP1Sx_q0EfPS2WHMMDZFUuZE3MIY21Gyb4-1725501533-1.0.1.1-drT_QB8KiCjwnWvHVG8qbRgmFMqaAlDCqUP45TO2rjlBZnFasKF0_8XH2SFgkhyFvlg7x.8xaGfmAfrBohFvBw",
+        "__cf_bm": "ikDMJYfuzjjvTU22I.vOsZWm51_g7Da8DsO18ypvkug-1725576204-1.0.1.1-NNZU17qrGVUpfWJrN0me6L12AhRrGu0u6BoVEepXSDhzbGpOj7nov7qKyEv_ywkBzPlNa18X7foZ9i_q_8T88g",
         "AMCV_0D15148954E6C5100A4C98BC%40AdobeOrg": "179643557%7CMCIDTS%7C19971%7CMCMID%7C81710461424735814132251758168733180272%7CMCAAMLH-1726106414%7C12%7CMCAAMB-1726106414%7CRKhpRz8krg2tLO6pguXWp5olkAcUniQYPHaMWWgdJ3xzPWQmdj0y%7CMCOPTOUT-1725508814s%7CNONE%7CMCAID%7CNONE%7CvVersion%7C5.5.0"
     }
 
@@ -114,6 +114,12 @@ def fetch_data_per_category(category: str, search_term: str, page_number: int = 
         for attempt in range(retries):
             try:
                 res = client.get(url, headers=headers, cookies=cookies)
+                print("HEADER", res.headers)
+                print()
+                print("cookie1", res.cookies)
+                print()
+                print("cookie2", res._cookies)
+
                 if res.status_code == 200:
                     logger.info("Success: %s", res)
                     return res.text
