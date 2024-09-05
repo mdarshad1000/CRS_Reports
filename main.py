@@ -10,6 +10,7 @@ from fastapi import FastAPI, HTTPException
 from mangum import Mangum
 import uvicorn
 from fake_useragent import UserAgent
+import os
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -109,12 +110,18 @@ def get_cookies():
         "AMCV_0D15148954E6C5100A4C98BC%40AdobeOrg": "179643557%7CMCIDTS%7C19971%7CMCMID%7C81710461424735814132251758168733180272%7CMCAAMLH-1726106414%7C12%7CMCAAMB-1726106414%7CRKhpRz8krg2tLO6pguXWp5olkAcUniQYPHaMWWgdJ3xzPWQmdj0y%7CMCOPTOUT-1725508814s%7CNONE%7CMCAID%7CNONE%7CvVersion%7C5.5.0",
     }
 
+# Hard-coded proxy URL
+PROXY_URL = "http://223.135.156.183:8080"  # Replace with your actual proxy URL
+
+def get_proxy():
+    return {"http://": PROXY_URL, "https://": PROXY_URL}
 
 def fetch_data_per_category(category: str, search_term: str, page_number: int = 0):
     url = build_url(category, search_term, page_number)
     headers = get_headers()
+    proxies = get_proxy()
     
-    with httpx.Client() as client:
+    with httpx.Client(proxies=proxies, verify=False) as client:
         retries = 5
         for attempt in range(retries):
             try:
@@ -122,6 +129,7 @@ def fetch_data_per_category(category: str, search_term: str, page_number: int = 
                 
                 if res.status_code == 200:
                     logger.info("Success: %s", res)
+                    print(res.text)
                     return res.text
                 elif res.status_code == 403:
                     logger.warning(f"403 Forbidden error on attempt {attempt + 1}")
