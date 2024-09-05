@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from datetime import datetime
 from fastapi import FastAPI, HTTPException
 from mangum import Mangum
+import uvicorn
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -197,6 +198,7 @@ async def fetch_data_endpoint(request_body: RequestBody):
         logger.error(f"Error in fetch_data_endpoint: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# To run the application, use the following command:
-# uvicorn your_script_name:app --reload
+
+if __name__ == "__main__":
+    uvicorn.run("main:app", host="0.0.0.0", port=8000)
 
