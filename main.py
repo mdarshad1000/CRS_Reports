@@ -10,7 +10,8 @@ from fastapi import FastAPI, HTTPException
 from mangum import Mangum
 import uvicorn
 from fake_useragent import UserAgent
-import os
+from playwright.async_api import async_playwright
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -116,32 +117,63 @@ PROXY_URL = "http://223.135.156.183:8080"  # Replace with your actual proxy URL
 def get_proxy():
     return {"http://": PROXY_URL, "https://": PROXY_URL}
 
-def fetch_data_per_category(category: str, search_term: str, page_number: int = 0):
+async def fetch_with_playwright(url: str):
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+        await page.goto(url)
+        content = await page.content()
+        await browser.close()
+        return content
+
+async def fetch_data_per_category(category: str, search_term: str, page_number: int = 0):
     url = build_url(category, search_term, page_number)
     headers = get_headers()
+    cookies = get_cookies()
     proxies = get_proxy()
     
-    with httpx.Client(proxies=proxies, verify=False) as client:
-        retries = 5
-        for attempt in range(retries):
-            try:
-                res = client.get(url, headers=headers, timeout=30)
-                
-                if res.status_code == 200:
-                    logger.info("Success: %s", res)
-                    print(res.text)
-                    return res.text
-                elif res.status_code == 403:
-                    logger.warning(f"403 Forbidden error on attempt {attempt + 1}")
-                    time.sleep(random.uniform(5, 10))  # Random delay between 5 and 10 seconds
-                else:
-                    logger.warning(f"Failed attempt {attempt + 1}: Status code {res.status_code}")
-            except httpx.RequestError as e:
-                logger.error(f"Request error on attempt {attempt + 1}: {e}")
-            
-            time.sleep(random.uniform(2, 5))  # Random delay between attempts
+    # Attempt 1: Standard httpx request
+    async with httpx.AsyncClient(timeout=30) as client:
+        try:
+            logger.debug(f"Attempting standard request to: {url}")
+            res = await client.get(url, headers=headers)
+            logger.debug(f"Standard request status code: {res.status_code}")
+            if res.status_code == 200:
+                return res.text
+        except Exception as e:
+            logger.error(f"Standard request failed: {e}")
 
-    raise HTTPException(status_code=500, detail="Failed to fetch data after multiple attempts")
+    # Attempt 2: Request with proxy
+    async with httpx.AsyncClient(timeout=30, proxies=proxies, verify=False) as client:
+        try:
+            logger.debug(f"Attempting proxy request to: {url}")
+            res = await client.get(url, headers=headers)
+            logger.debug(f"Proxy request status code: {res.status_code}")
+            if res.status_code == 200:
+                return res.text
+        except Exception as e:
+            logger.error(f"Proxy request failed: {e}")
+
+    # Attempt 3: Request with cookies
+    async with httpx.AsyncClient(timeout=30, cookies=cookies) as client:
+        try:
+            logger.debug("Attempting request with cookies")
+            res = await client.get(url, headers=headers)
+            logger.debug(f"Cookie request status code: {res.status_code}")
+            if res.status_code == 200:
+                return res.text
+        except Exception as e:
+            logger.error(f"Cookie request failed: {e}")
+
+    # Attempt 4: Use Playwright
+    try:
+        logger.debug("Attempting request with Playwright")
+        content = await fetch_with_playwright(url)
+        return content
+    except Exception as e:
+        logger.error(f"Playwright request failed: {e}")
+
+    raise HTTPException(status_code=500, detail="All attempts to fetch data failed")
 
 
 def parse_data(json_data: str, start_date: datetime, end_date: datetime):
@@ -175,7 +207,7 @@ def parse_data(json_data: str, start_date: datetime, end_date: datetime):
     return final_data
 
 
-def fetch_final_data(
+async def fetch_final_data(
     categories: List[str], start_date: str, end_date: str, search_term: str = ""
 ):
     start_date_dt, end_date_dt = parse_dates(start_date, end_date)
@@ -186,7 +218,7 @@ def fetch_final_data(
         more_pages = True
 
         while more_pages:
-            json_data = fetch_data_per_category(category, search_term, page_number)
+            json_data = await fetch_data_per_category(category, search_term, page_number)
             page_data = parse_data(json_data, start_date_dt, end_date_dt)
 
             # Break if no data is returned
@@ -203,12 +235,10 @@ def fetch_final_data(
 
     return final_data, len(final_data)
 
-
 class RequestBody(BaseModel):
     categories: List[str]
     start_date: Optional[str]
     end_date: Optional[str]
-
 
 @app.post("/fetch-data")
 async def fetch_data_endpoint(request_body: RequestBody):
@@ -216,7 +246,7 @@ async def fetch_data_endpoint(request_body: RequestBody):
     start_date = request_body.start_date
     end_date = request_body.end_date
     try:
-        data = fetch_final_data(
+        data = await fetch_final_data(
             categories=categories, start_date=start_date, end_date=end_date
         )
         return data
@@ -224,10 +254,8 @@ async def fetch_data_endpoint(request_body: RequestBody):
         logger.error(f"Error in fetch_data_endpoint: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000)
-
 
 {
     "date": "Thu, 05 Sep 2024 22:49:00 GMT",
