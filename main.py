@@ -120,7 +120,7 @@ def get_proxy():
 
 async def fetch_with_playwright(url: str):
     async with async_playwright() as p:
-        browser = await p.chromium.launch()
+        browser = await p.chromium.launch(headless=True)
         page = await browser.new_page()
         await page.goto(url)
         content = await page.content()
@@ -256,7 +256,7 @@ async def fetch_data_endpoint(request_body: RequestBody):
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
-    subprocess.run(["playwright", "install"])
+    subprocess.run(["playwright", "install", "chromium"])
     uvicorn.run("main:app", host="0.0.0.0", port=8000)
 
 
