@@ -9,6 +9,7 @@ from datetime import datetime
 from fastapi import FastAPI, HTTPException
 from mangum import Mangum
 import uvicorn
+import subprocess
 from fake_useragent import UserAgent
 from playwright.async_api import async_playwright
 
@@ -256,6 +257,8 @@ async def fetch_data_endpoint(request_body: RequestBody):
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000)
+    # install playwright
+    subprocess.run(["playwright", "install"])
 
 {
     "date": "Thu, 05 Sep 2024 22:49:00 GMT",
