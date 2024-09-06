@@ -119,11 +119,12 @@ def fetch_data_per_category(category: str, search_term: str, page_number: int = 
         for attempt in range(retries):
             try:
                 res = client.get(url, headers=headers, timeout=30)
-                
+                print(res.text)
                 if res.status_code == 200:
                     logger.info("Success: %s", res)
                     return res.text
                 elif res.status_code == 403:
+                
                     logger.warning(f"403 Forbidden error on attempt {attempt + 1}")
                     time.sleep(random.uniform(5, 10))  # Random delay between 5 and 10 seconds
                 else:
