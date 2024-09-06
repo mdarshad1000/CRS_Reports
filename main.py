@@ -256,9 +256,9 @@ async def fetch_data_endpoint(request_body: RequestBody):
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000)
-    # install playwright
     subprocess.run(["playwright", "install"])
+    uvicorn.run("main:app", host="0.0.0.0", port=8000)
+
 
 {
     "date": "Thu, 05 Sep 2024 22:49:00 GMT",
