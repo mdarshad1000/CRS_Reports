@@ -1,22 +1,22 @@
 import httpx
 import random
-import time
 import json
 import logging
+import uvicorn
+import asyncio
 from typing import List, Optional
 from pydantic import BaseModel
 from datetime import datetime
-from fastapi import FastAPI, HTTPException
-from mangum import Mangum
-import uvicorn
 from fake_useragent import UserAgent
+from fastapi import FastAPI, HTTPException
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI()
-handler = Mangum(app)
+
 
 category_navid_mapping = {
     "Foreign Affairs": 4294967243,
@@ -68,7 +68,7 @@ def build_url(category: str, search_term: str, page_number: int):
         search_term: str
         page_number: int
     Returns:
-        constructed url: str
+        constructed url: str 
     """
     nav_id = category_navid_mapping[category]
     random_six = random.randint(1000000, 9999999)
@@ -110,29 +110,28 @@ def get_cookies():
     }
 
 
-def fetch_data_per_category(category: str, search_term: str, page_number: int = 0):
+async def fetch_data_per_category(category: str, search_term: str, page_number: int = 0) -> str:
+    """Fetch data for a specific category and page number."""
     url = build_url(category, search_term, page_number)
     headers = get_headers()
+    cookies = get_cookies()
     
-    with httpx.Client() as client:
-        retries = 5
-        for attempt in range(retries):
+    async with httpx.AsyncClient() as client:
+        for attempt in range(5):
             try:
-                res = client.get(url, headers=headers, timeout=30)
-                print(res.text)
+                res = await client.get(url, headers=headers, timeout=30, cookies=cookies)
                 if res.status_code == 200:
                     logger.info("Success: %s", res)
                     return res.text
                 elif res.status_code == 403:
-                
                     logger.warning(f"403 Forbidden error on attempt {attempt + 1}")
-                    time.sleep(random.uniform(5, 10))  # Random delay between 5 and 10 seconds
+                    await asyncio.sleep(random.uniform(5, 10))
                 else:
                     logger.warning(f"Failed attempt {attempt + 1}: Status code {res.status_code}")
             except httpx.RequestError as e:
                 logger.error(f"Request error on attempt {attempt + 1}: {e}")
             
-            time.sleep(random.uniform(2, 5))  # Random delay between attempts
+            await asyncio.sleep(random.uniform(2, 5))
 
     raise HTTPException(status_code=500, detail="Failed to fetch data after multiple attempts")
 
@@ -168,98 +167,67 @@ def parse_data(json_data: str, start_date: datetime, end_date: datetime):
     return final_data
 
 
-def fetch_final_data(
-    categories: List[str], start_date: str, end_date: str, search_term: str = ""
-):
+async def fetch_final_data(categories: List[str], start_date: str, end_date: str, search_term: str = "") -> List[dict]:
+    """Fetch and compile data for all specified categories."""
     start_date_dt, end_date_dt = parse_dates(start_date, end_date)
 
     final_data = []
     for category in categories:
         page_number = 1
-        more_pages = True
-
-        while more_pages:
-            json_data = fetch_data_per_category(category, search_term, page_number)
+        while True:
+            json_data = await fetch_data_per_category(category, search_term, page_number)
             page_data = parse_data(json_data, start_date_dt, end_date_dt)
 
-            # Break if no data is returned
             if not page_data:
                 break
 
             final_data.extend(page_data)
 
-            # Check if the last item is within the end date, if not, stop fetching more pages
             if datetime.strptime(page_data[-1]["date"], "%Y-%m-%d") < start_date_dt:
-                more_pages = False
-            else:
-                page_number += 1
+                break
 
-    return final_data, len(final_data)
+            page_number += 1
+
+    return final_data
+
+
+async def upload_pdf(item: dict):
+    """Upload a PDF file to the specified endpoint."""
+    async with httpx.AsyncClient() as client:
+        pdf_response = await client.get(item["pdf_url"], headers=get_headers())
+        if pdf_response.status_code == 200:
+            files = {'file': (f'{item["title"]}.pdf', pdf_response.content, 'application/pdf')}
+            upload_response = await client.post('http://localhost:9000/accept-pdf', files=files)
+            if upload_response.status_code == 200:
+                logger.info(f"Successfully uploaded {item['title']}")
+            else:
+                logger.error(f"Failed to upload {item['title']}: {upload_response.content}")
 
 
 class RequestBody(BaseModel):
     categories: List[str]
-    start_date: Optional[str]
-    end_date: Optional[str]
+    start_date: str
+    end_date: str
 
 
 @app.post("/fetch-data")
 async def fetch_data_endpoint(request_body: RequestBody):
-    categories = request_body.categories
-    start_date = request_body.start_date
-    end_date = request_body.end_date
     try:
-        data = fetch_final_data(
-            categories=categories, start_date=start_date, end_date=end_date
+        data = await fetch_final_data(
+            categories=request_body.categories,
+            start_date=request_body.start_date,
+            end_date=request_body.end_date
         )
+        
+        # Upload PDFs synchronously
+        for item in data:
+            await upload_pdf(item)
+
         return data
+
     except Exception as e:
         logger.error(f"Error in fetch_data_endpoint: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000)
-
-
-{
-    "date": "Thu, 05 Sep 2024 22:49:00 GMT",
-    "content-type": "text/html; charset=UTF-8",
-    "transfer-encoding": "chunked",
-    "connection": "close",
-    "accept-ch": "Sec-CH-UA-Bitness, Sec-CH-UA-Arch, Sec-CH-UA-Full-Version, Sec-CH-UA-Mobile, Sec-CH-UA-Model, Sec-CH-UA-Platform-Version, Sec-CH-UA-Full-Version-List, Sec-CH-UA-Platform, Sec-CH-UA, UA-Bitness, UA-Arch, UA-Full-Version, UA-Mobile, UA-Model, UA-Platform-Version, UA-Platform, UA",
-    "critical-ch": "Sec-CH-UA-Bitness, Sec-CH-UA-Arch, Sec-CH-UA-Full-Version, Sec-CH-UA-Mobile, Sec-CH-UA-Model, Sec-CH-UA-Platform-Version, Sec-CH-UA-Full-Version-List, Sec-CH-UA-Platform, Sec-CH-UA, UA-Bitness, UA-Arch, UA-Full-Version, UA-Mobile, UA-Model, UA-Platform-Version, UA-Platform, UA",
-    "cross-origin-embedder-policy": "require-corp",
-    "cross-origin-opener-policy": "same-origin",
-    "cross-origin-resource-policy": "same-origin",
-    "origin-agent-cluster": "?1",
-    "permissions-policy": "accelerometer=(),autoplay=(),browsing-topics=(),camera=(),clipboard-read=(),clipboard-write=(),geolocation=(),gyroscope=(),hid=(),interest-cohort=(),magnetometer=(),microphone=(),payment=(),publickey-credentials-get=(),screen-wake-lock=(),serial=(),sync-xhr=(),usb=()",
-    "referrer-policy": "same-origin",
-    "x-content-options": "nosniff",
-    "x-frame-options": "SAMEORIGIN",
-    "cf-mitigated": "challenge",
-    "cf-chl-out": "aGe495ub57I0zk+8J7Pcyl2Mb68qtMg94FvEhMVOQROSurPHuH8evUM4MsxEyEVscqGwT5enU+MbQz1okt5wACXkmoZMqStji6L2LO8QsBCbgq/S81wttqSfYyf0YUDDQ4ObJTgPA3cIAFlb2G2BXg==$P1zCQByfMmWh6ot2xDlOmA==",
-    "cache-control": "private, max-age=0, no-store, no-cache, must-revalidate, post-check=0, pre-check=0",
-    "expires": "Thu, 01 Jan 1970 00:00:01 GMT",
-    "vary": "Accept-Encoding",
-    "server": "cloudflare",
-    "cf-ray": "8be9c5227fd95fcf-SIN",
-    "content-encoding": "gzip",
-}
-{
-    "date": "Thu, 05 Sep 2024 22:45:34 GMT",
-    "content-type": "application/json; charset=utf-8",
-    "transfer-encoding": "chunked",
-    "connection": "keep-alive",
-    "pragma": "no-cache",
-    "expires": "-1",
-    "age": "0",
-    "content-security-policy": "frame-ancestors 'none'",
-    "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
-    "cache-control": "no-cache, no-store, must-revalidate, max-age=0, s-maxage=0",
-    "x-frame-options": "SAMEORIGIN",
-    "cf-cache-status": "DYNAMIC",
-    "server": "cloudflare",
-    "cf-ray": "8be9c0089eb4898b-DEL",
-    "content-encoding": "gzip",
-}
