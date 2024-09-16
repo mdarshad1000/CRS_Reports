@@ -112,7 +112,7 @@ def get_cookies():
     }
 
 
-proxy_url = "socks4://64.139.79.35:54321"
+proxy_url = "socks4://138.117.63.102:3629"
 # Create a transport with the SOCKS4 proxy
 # Replace SyncProxyTransport with AsyncProxyTransport for async operations
 transport = AsyncProxyTransport.from_url(proxy_url)
