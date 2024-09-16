@@ -113,8 +113,6 @@ def get_cookies():
 
 
 proxy_url = "socks4://138.117.63.102:3629"
-# Create a transport with the SOCKS4 proxy
-# Replace SyncProxyTransport with AsyncProxyTransport for async operations
 transport = AsyncProxyTransport.from_url(proxy_url)
 
 async def fetch_data_per_category(category: str, search_term: str, page_number: int = 0) -> str:
@@ -122,31 +120,43 @@ async def fetch_data_per_category(category: str, search_term: str, page_number: 
     url = build_url(category, search_term, page_number)
     headers = get_headers()
     cookies = get_cookies()
-
-    # Increase the connection timeout
-    timeout = httpx.Timeout(10.0, connect=80.0)  # 10 seconds for overall timeout, 60 seconds for connection timeout
-  
-    async with httpx.AsyncClient(transport=transport, timeout=timeout) as client:
-        for attempt in range(5):
+    
+    # Read proxy URLs from file and iterate through them
+    with open("socks4.txt", "r") as f:
+        proxy_urls = f.readlines()
+    
+    for item in proxy_urls:
+        proxy_url = "socks4://" + item.strip()
+        transport = AsyncProxyTransport.from_url(proxy_url)
+        
+        # Increase the connection timeout
+        timeout = httpx.Timeout(10.0, connect=80.0)
+        
+        success = False
+        while not success:
             try:
-                res = await client.get(url, headers=headers, timeout=200, cookies=cookies)
-
-                if res.status_code == 200:
-                    logger.info("Success: %s", res)
-                    return res.text
-                elif res.status_code == 403:
-                    logger.warning(f"403 Forbidden error on attempt {attempt + 1}")
-                    await asyncio.sleep(random.uniform(5, 10))
-                else:
-                    logger.warning(f"Failed attempt {attempt + 1}: Status code {res.status_code}")
-            except httpx.RequestError as e:
-                logger.error(f"Request error on attempt {attempt + 1}: {e}")
-                logger.error(traceback.format_exc())  # Log the full traceback
-
-            
-            await asyncio.sleep(random.uniform(2, 5))
+                async with httpx.AsyncClient(transport=transport, timeout=timeout) as client:
+                    res = await client.get(url, headers=headers, cookies=cookies)
+                    
+                    if res.status_code == 200:
+                        logger.info("Success: %s", res)
+                        return res.text
+                    elif res.status_code == 403:
+                        logger.warning(f"403 Forbidden error on attempt with proxy {proxy_url}")
+                    else:
+                        logger.warning(f"Failed attempt with proxy {proxy_url}: Status code {res.status_code}")
+                    
+                    success = True  # Set success to True if the request was successful
+                break  # Break out of the while loop if successful
+            except Exception as e:
+                logger.error(f"An error occurred with proxy {proxy_url}: {e}")
+                break  # Break out of the while loop to try the next proxy
+        
+        if success:
+            break  # Break out of the for loop if successful
 
     raise HTTPException(status_code=500, detail="Failed to fetch data after multiple attempts")
+
 
 
 def parse_data(json_data: str, start_date: datetime, end_date: datetime):
