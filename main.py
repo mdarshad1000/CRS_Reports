@@ -47,6 +47,7 @@ category_navid_mapping = {
     "Veterans": 4294966968,
 }
 
+proxy_url = 'http://103.90.180.119:0'
 
 def parse_dates(start_date: str, end_date: str):
     """
@@ -119,7 +120,7 @@ async def fetch_data_per_category(category: str, search_term: str, page_number: 
     async with httpx.AsyncClient() as client:
         for attempt in range(5):
             try:
-                res = await client.get(url, headers=headers, timeout=30, cookies=cookies)
+                res = await client.get(url, headers=headers, timeout=30, cookies=cookies, proxy_url=proxy_url)
                 if res.status_code == 200:
                     logger.info("Success: %s", res)
                     return res.text
@@ -198,6 +199,7 @@ async def upload_pdf(item: dict):
         if pdf_response.status_code == 200:
             files = {'file': (f'{item["title"]}.pdf', pdf_response.content, 'application/pdf')}
             upload_response = await client.post('http://localhost:9000/accept-pdf', files=files)
+            
             if upload_response.status_code == 200:
                 logger.info(f"Successfully uploaded {item['title']}")
             else:
