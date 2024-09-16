@@ -1,3 +1,4 @@
+import traceback
 import httpx
 import random
 import json
@@ -9,6 +10,7 @@ from pydantic import BaseModel
 from datetime import datetime
 from fake_useragent import UserAgent
 from fastapi import FastAPI, HTTPException
+from httpx_socks import SyncProxyTransport, AsyncProxyTransport
 
 
 # Configure logging
@@ -47,7 +49,6 @@ category_navid_mapping = {
     "Veterans": 4294966968,
 }
 
-proxy_url = 'http://103.90.180.119:0'
 
 def parse_dates(start_date: str, end_date: str):
     """
@@ -111,16 +112,25 @@ def get_cookies():
     }
 
 
+proxy_url = "socks4://64.139.79.35:54321"
+# Create a transport with the SOCKS4 proxy
+# Replace SyncProxyTransport with AsyncProxyTransport for async operations
+transport = AsyncProxyTransport.from_url(proxy_url)
+
 async def fetch_data_per_category(category: str, search_term: str, page_number: int = 0) -> str:
     """Fetch data for a specific category and page number."""
     url = build_url(category, search_term, page_number)
     headers = get_headers()
     cookies = get_cookies()
-    
-    async with httpx.AsyncClient() as client:
+
+    # Increase the connection timeout
+    timeout = httpx.Timeout(10.0, connect=80.0)  # 10 seconds for overall timeout, 60 seconds for connection timeout
+  
+    async with httpx.AsyncClient(transport=transport, timeout=timeout) as client:
         for attempt in range(5):
             try:
-                res = await client.get(url, headers=headers, timeout=30, cookies=cookies, proxy_url=proxy_url)
+                res = await client.get(url, headers=headers, timeout=200, cookies=cookies)
+
                 if res.status_code == 200:
                     logger.info("Success: %s", res)
                     return res.text
@@ -131,6 +141,8 @@ async def fetch_data_per_category(category: str, search_term: str, page_number: 
                     logger.warning(f"Failed attempt {attempt + 1}: Status code {res.status_code}")
             except httpx.RequestError as e:
                 logger.error(f"Request error on attempt {attempt + 1}: {e}")
+                logger.error(traceback.format_exc())  # Log the full traceback
+
             
             await asyncio.sleep(random.uniform(2, 5))
 
@@ -232,4 +244,4 @@ async def fetch_data_endpoint(request_body: RequestBody):
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
